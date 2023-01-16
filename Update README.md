@@ -1,14 +1,15 @@
 
+Here is a short decrption of the files in this repository: 
 
-The file `main_runBuffersModels.py` is set up to run the models from the paper `Macroprudential Regulation: A Risk Management Approach` (Daniel Dimitrov; Sweder van Wijnbergen).  Follow the instructions within the file. 
-
-To run the model you need daily or weekly data on CDS spreads for a universe of banks, as well as balance sheet information on the size of the liabilities of each bank. The data needs to be arranged in folder `data` following the same convention as the one provided. 
++ The file `main_runBuffersModels.py` is set up to run the models from the paper `Macroprudential Regulation: A Risk Management Approach` (Daniel Dimitrov; Sweder van Wijnbergen).  
+  + Follow the instructions within this file to run the model. 
+  + You need daily or weekly data on CDS spreads for a universe of banks, as well as balance sheet information on the size of the liabilities of each bank. The data needs to be arranged in folder `data` following the same convention as the one provided. 
 
 Here is a short description on how to set model parameters and the files and classes to which `main_runBuffersModels.py`  refers to: 
 
 1. `setParams.py` contains the main parameters of the model. Set here start and end date for the evaluation period. 
 
-2.`DataLoad.py` contains the procedures loading and processing data. 
+2. `DataLoad.py` contains the procedures loading and processing data. 
 
 3. `GetImpliedParams.py` contains a customized preset procedure that refers to `DataLoad.py` for loading the data in a format that can be processed later on easily   
 
