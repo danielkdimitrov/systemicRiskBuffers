@@ -24,7 +24,7 @@ Here are the files and classes to which `main_runBuffersModels.py` refers to:
 
 The data needs to be in a folder `Data` in the sample formats attached in this repository. The following files need to be updated
 
-1. In folder `cds` update the CDS prices for all banks. 
+1. In folder `cds` update the CDS prices for all banks. Note that currently the CDS files contain only sample data, as the original data is Bloomberg proprietary. 
 
 2. In folder `debt` update the size of the liabilities of each bank. 
 
