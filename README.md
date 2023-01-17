@@ -20,12 +20,28 @@ Here are the files and classes to which `main_runBuffersModels.py` refers to:
 
 5. `optimalSystemicCapital` contains all the computational procedures in python class `PDmodel`. The class is organized in such a way that when you call it, you have to specify which model you want to run, e.g. the EEI model with `EEI opt w/data` or the Expected Shortfall minimization model with `min ES
 
-## Arranging the data
+## How to run the model
 
-The data needs to be in a folder `Data` in the sample formats attached in this repository. The following files need to be updated
+1. Update the data in a folder `data` keeping the the sample formats attached in this repository. The following files need to be updated
 
-1. In folder `cds` update the CDS prices for all banks. Note that currently the CDS files contain only sample data, as the original data is Bloomberg proprietary. 
+  a. In folder `cds` update the time series of the CDS prices for all banks. Note that currently the CDS files contain only sample data, as the original data is Bloomberg proprietary. 
 
-2. In folder `debt` update the size of the liabilities of each bank. 
+  b. In folder `debt` update the size of the liabilities of each bank. 
 
-3. Optional: In folder `other` update the `BankDefinitions.csv` file. In the column `Sample` indicate that the bank will be part of consequent analysis with a `Y`
+  c. In folder `other` update the `BankDefinitions.csv` file. In the column `Sample` indicate that the bank will be part of consequent analysis with a `Y`. Including other columns is optional. 
+  
+2. In file `setParams.py` set the parameters `firstDate` and `lastDate` which will determine the time window used for the analysis. Further options can be changed here, such as the number of factors (`n`), and number of simulations (`nSims`) 
+
+3. Run file `main_runBuffersModels.py`. There are three sections in the file
+
+  a. Import data: gets the input data in the appropriate format
+  
+  b. Run Expected Equal Impact Model
+  
+  c. Runnin ES model subject to average target
+
+Once the appropriate model is run, the output data is arranged as parts of the output class `myPD`. The file `main_runBuffersModels` provides sample output and charts. 
+
+##  
+
+1. Update CDS prices 
