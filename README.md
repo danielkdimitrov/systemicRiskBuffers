@@ -19,3 +19,13 @@ Here are the files and classes to which `main_runBuffersModels.py` refers to:
 4. `myplotstyle.py` contains preset plot functions that are referred to in the paper. 
 
 5. `optimalSystemicCapital` contains all the computational procedures in python class `PDmodel`. The class is organized in such a way that when you call it, you have to specify which model you want to run, e.g. the EEI model with `EEI opt w/data` or the Expected Shortfall minimization model with `min ES
+
+## Arranging the data
+
+The data needs to be in a folder `Data` in the sample formats attached in this repository. The following files need to be updated
+
+1. In folder `cds` update the CDS prices for all banks. 
+
+2. In folder `debt` update the size of the liabilities of each bank. 
+
+3. Optional: In folder `other` update the `BankDefinitions.csv` file. In the column `Sample` indicate that the bank will be part of consequent analysis with a `Y`
