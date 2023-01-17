@@ -41,3 +41,5 @@ Here are the files and classes to which `main_runBuffersModels.py` refers to:
   c. Runnin ES model subject to average target
 
 Once the appropriate model is run, the output data is arranged as parts of the output class `myPD`. The file `main_runBuffersModels` provides sample output and charts. 
+
+For questions and comments, contact me at daniel.k.dimitrov@gmail.com. 
