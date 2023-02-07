@@ -3,7 +3,7 @@
 ## Optimal Systemic Risk Buffers
 
 
-Here is a short decrption of the files in this repository. The file `main_runBuffersModels.py` is set up to run the models from the paper `Macroprudential Regulation: A Risk Management Approach` (Daniel Dimitrov; Sweder van Wijnbergen).
+Here is a short decrption of the files in this repository. The file `main_runBuffersModels.py` is set up to run the models from the paper [Macroprudential Regulation: A Risk Management Approach (Daniel Dimitrov; Sweder van Wijnbergen)](https://www.dnb.nl/publicaties/publicaties-onderzoek/working-paper-2023/765-macroprudential-regulation-a-risk-management-approach/).
 
 + Follow the instructions within this file to run the model. 
 + You need daily or weekly data on CDS spreads for a universe of banks, as well as balance sheet information on the size of the liabilities of each bank. The data needs to be arranged in folder `data` following the same convention as the one provided. 
