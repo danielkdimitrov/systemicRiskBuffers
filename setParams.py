@@ -14,19 +14,23 @@ class SetParams:
             '''
             For a backtest, this includes also the first date of the first time window
             '''
-            self.firstDateBT = pd.to_datetime('2010-01-03')   # 2006-01-03 2016-01-01 - 2010-01-01 pd.to_datetime('2021-02-15 00:00:00')   # latest
+            self.firstDateBT = pd.to_datetime('2005-01-04') #2016   # 3/31/2015 2006-01-03 2016-01-01 - 2010-01-01 pd.to_datetime('2021-02-15 00:00:00')   # latest
             self.lastDateBT = pd.to_datetime('2022-08-29')    #2021-11-15  pd.to_datetime('2010-01-01 00:00:00') # earliest
 
             'First Date and Last Date of the analysis.'
 
             self.firstDate ='2019-08-31'   # 2019-09-09- 2010-01-01 pd.to_datetime('2021-02-15 00:00:00')   # latest
             self.lastDate = '2022-08-29'    # 2021-09-13 2021-11-15 check   pd.to_datetime('2010-01-01 00:00:00') # earliest
+            self.universeEURO = ['ABN', 'BAY', 'BBVA', 'BNP', 'CAIX', 'COMZ', 'CRAG', 'CRMU', 'DANK',
+                   'DB', 'DZ', 'ERST', 'SWEN', 'HESLN', 'INGB', 'INTE', 'KBCB', 'LBBW',
+                   'NORD', 'RABO', 'SAB', 'SANT', 'SEB', 'SOCG', 'SWED', 'UNIC', 'VB'] #self.DataSet.banks[(self.DataSet.banks['Sample']=='Y')| (self.DataSet.banks['Bank Name'] =='Volksbank')].index
 
-            self.tw = 104 #250
+            self.tw = 104 #250 # this is only used in the backtest
             self.dt = datetime.timedelta(weeks=self.tw)
             'Modelling parameters'
             self.q = .95
             self.nF = 3  # number of factors
+            #self.RR = .0 # recovery rate
             #'Collateral Params'
             #self.mu = 1.
             #self.sigmaC = .1
@@ -59,7 +63,7 @@ class SetParams:
                 self.endDates[jD] = pd.to_datetime(endD + ' 00:00:00')
           '''
             'Merton :'
-            self.r = 0.#0.005 
+            self.r = 0.005 
             self.T = 1. 
             'Data frequency'
             self.dt = 1/52

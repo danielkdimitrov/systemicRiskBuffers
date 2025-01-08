@@ -6,7 +6,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
 import numpy as np
-
+import pandas as pd
 
 def myplot_frame(figSize=(4, 3),fntsize=30):
     'plot function parameters'

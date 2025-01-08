@@ -27,54 +27,75 @@ class DataLoad(SetParams):
         'TODO : Put this with the Merton Class'
         
     def getCDS(self):
-        cdsPrice = self.loadAllFiles('data\cds','w')
-        cdsPrice = cdsPrice #in decimals 
+        cdsPrice = self.loadAllFiles(r'data\cds_mid','w')
+        cdsPrice = cdsPrice.sort_index() #in decimals 
         cdsLC = self.getLogChanges(cdsPrice)
         return cdsPrice, cdsLC
 
     def getEquity(self):
-        equityPrice = self.loadAllFiles('data\equity','w')
+        equityPrice = self.loadAllFiles(r'data\equity','w')
         equityLC = self.getLogChanges(equityPrice)
         return equityLC, equityPrice
 
     def getEquityMV(self):
-        return self.loadAllFiles('data\equityMV','w')
+        return self.loadAllFiles(r'data\equityMV','w')
     
     def getDebt(self):
-        return self.loadAllFiles('data\debt','a')
+        return self.loadAllFiles(r'data\debt','a')
     
     def getTier1Ratio(self):
-        return self.loadAllFiles('data\\tier1capratio','a')
+        return self.loadAllFiles(r'data\\tier1capratio','a')
     
     def getVola(self):
-        return self.loadAllFiles('data\\vola','w')   
+        return self.loadAllFiles(r'data\\vola','w')   
         
-    def loadAllFiles(self,subFolder,freq):
-        '''
-        folder : string of the child folder where the csv files are
-        '''
-        df = pd.DataFrame()
-        for file_name in glob.glob(subFolder+'\*.csv'):
+    def loadAllFiles(self, subFolder, freq):
+        merged_df = None  # Start with no DataFrame
+    
+        for file_name in glob.glob(subFolder + r'\*.csv'):
             print('Loading Data: ', file_name)
-            series = pd.read_csv(file_name, header=0, parse_dates=["Date"], index_col=0, squeeze=True)
-            if df.empty == False:
-                df = pd.merge(df,pd.DataFrame(series) , on='Date', how='outer')
-            else: 
-                df = pd.DataFrame(series)
+            series = pd.read_csv(file_name, header=0, parse_dates=["Date"], index_col="Date")
+            series = series.squeeze("columns")  # Convert to Series if a single column
+            series_df = pd.DataFrame(series)
+            
+            # Drop duplicate dates if any
+            if series_df.index.duplicated().any():
+                print(f"Duplicate dates found in file: {file_name}")
+                series_df = series_df[~series_df.index.duplicated(keep="first")]
+    
+            if merged_df is None:
+                merged_df = series_df
+            else:
+                # Merge incrementally
+                merged_df = pd.merge(
+                    merged_df, 
+                    series_df, 
+                    on="Date", 
+                    how="outer", 
+                    copy=False,  # Reduce memory overhead
+                    sort=False   # Avoid unnecessary sorting during merges
+                )
+        
+        # Downcast numeric columns to save memory
+        for col in merged_df.select_dtypes(include=["float64", "int64"]).columns:
+            merged_df[col] = pd.to_numeric(merged_df[col], downcast="float")
+    
+        # Handle frequency if needed
         if freq == 'w':
-            'Keep Weekly data only : '
-            #freq = freq # now, either 'w' for weekly or otherwise it's daily by default
-            df = self.getWeekly(df)
-        'TODO : if a (which is debt) fill in missing values to daily/weekly'
-        'sort so that newest ? are on top : '
-        df.sort_index(ascending=False, inplace=True)
-        # else keep as it is
-        return df
+            print("Filtering to keep weekly data only...")
+            merged_df = self.getWeekly(merged_df)
+    
+        # Sort dates in descending order
+        merged_df.sort_index(ascending=False, inplace=True)
+    
+        return merged_df
     
     def getWeekly(self,df):
         'Resample the daily Price data to weekly. Resmapling is done to keep Monday prices '
         #offset = pd.offsets.timedelta(days=-6)
-        df = df.resample('W', label='left', loffset=pd.DateOffset(days=1)).first() #.first() #,loffset=offset
+        df = df.resample('W', label='left').first() #.first() #,, loffset=pd.DateOffset(days=1)
+        df.index = df.index + pd.DateOffset(days=1)
+
         df.sort_index(ascending=False, inplace=True)
         
         return df
@@ -112,22 +133,24 @@ class DataTransform(DataLoad):
         capitalRatio = DataLoad().getTier1Ratio()
         self.capitalRatio = self.getToWeekly(capitalRatio)
         print('Loading Data: data\\other\RR.csv; DepositsToLiabs.csv')        
-        RR = pd.read_csv('data\\other\\RR.csv', header=0, parse_dates=["Date"], index_col=0, squeeze=True)
+        RR = pd.read_csv(r'data\\other\\RR.csv', header=0, parse_dates=["Date"], index_col=0) #squeeze=True
         self.RR = self.getToWeekly(RR)
-        DL = pd.read_csv('data\\other\\DepositsToLiabs.csv', header=0, parse_dates=["Date"], index_col=0, squeeze=True)
+        DL = pd.read_csv(r'data\\other\\DepositsToLiabs.csv', header=0, parse_dates=["Date"], index_col=0) #, squeeze=True
         self.DL = self.getToWeekly(DL)
-        self.banks = pd.read_csv('data\\other\\BankDefinitions.csv', header=0,index_col=0, squeeze=True)
+        self.banks = pd.read_csv(r'data\\other\\BankDefinitions.csv', header=0,index_col=0)#, squeeze=True
         'Load Capital Ratios'
 
         'Get : Rolling StDev./Weekly'
-        self.CDSstd = self.CDSreturns.sort_index(ascending=True).rolling(52).std()*np.sqrt(52) #250 50 weeks rolling, scale to a year
-        self.CDSstd.sort_index(ascending=True, inplace=True)
-        self.vola = DataLoad().getVola()/100
+        #self.CDSstd = self.CDSreturns.sort_index(ascending=True).rolling(52).std()*np.sqrt(52) #250 50 weeks rolling, scale to a year
+        #self.CDSstd.sort_index(ascending=True, inplace=True)
+        #self.vola = DataLoad().getVola()/100
         
     def getToWeekly(self, df):
         '- Create empty row'
-        df = df.append(pd.Series(name=self.endDate)) #
-        df.sort_index(ascending=False, inplace=True)
+        #new_row = pd.Series(name=self.endDate)
+        df = pd.concat([df, pd.Series(name=self.endDate).to_frame().T])
+        #df = df.append(pd.Series(name=self.endDate)) #
+        #df.sort_index(ascending=False, inplace=True)
         '- Get down to weekly and fill in missing'
         df = DataLoad().getWeekly(df)
         df = df.interpolate(method='quadratic')  #bfill() #    # fill backward with the same value as the most recent forward

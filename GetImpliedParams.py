@@ -29,8 +29,10 @@ from DataLoad import *
 from SystemicRisk import *
 from myplotstyle import * 
 
+Params = SetParams()
+
 class GetImpliedParams:
-    def __init__(self, dutchSubsample = True, fixedRRs = True, plotInd = False):
+    def __init__(self, dutchSubsample = True, fixedRRs = True, plotInd = False, evalDate = Params.lastDate, startDate=Params.firstDate, RR = .2):
         '''
         Parameters
         ----------
@@ -40,8 +42,9 @@ class GetImpliedParams:
             DESCRIPTION. The default is False.
 
         Returns
+        
         -------
-        None.
+        I need to fix other DataSet = DataTransform(getEquity = False)
 
         '''
         self.fixedRRs = fixedRRs
@@ -53,12 +56,9 @@ class GetImpliedParams:
         self.DataSet = DataTransform(getEquity = False)
         'Set Universe and Time Window'
         self.Params = SetParams()    
-        self.evalDate, self.startDate = self.Params.lastDate, self.Params.firstDate #'2021-09-13','2019-09-09'  #2016-12-07 #2010-01-01  '2021-11-15',
+        self.evalDate, self.startDate = evalDate, startDate  #self.Params.lastDate, self.Params.firstDate #'2021-09-13','2019-09-09'  #2016-12-07 #2010-01-01  '2021-11-15',
         'Set the Universe'        
-        if self.dutchSubsample == True:
-            self.universe = self.DataSet.banks.loc[['ABN', 'INGB', 'RABO', 'VB']].index  #banks[self.DataSet.banks['Country']=='Netherlands'].index            
-        else: 
-            self.universe = self.DataSet.banks[(self.DataSet.banks['Sample']=='Y')| (self.DataSet.banks['Bank Name'] =='Volksbank')].index #  | (self.DataSet.banks['Bank Name'] =='NIBC Bank')
+        self.universe = Params.universeEURO #self.DataSet.banks[(self.DataSet.banks['Sample']=='Y')| (self.DataSet.banks['Bank Name'] =='Volksbank')].index #  | (self.DataSet.banks['Bank Name'] =='NIBC Bank')
         
         self.path = "C:\\Users\\danie\\Dropbox\\Amsterdam\\Systemic Risk Europe DNB\\images2\\"
         self.mycolors = ['k', 'tab:blue', 'tab:grey', 'tab:orange', 'tab:brown', 'tab:green', 'tab:pink', 'tab:olive']   
@@ -66,33 +66,37 @@ class GetImpliedParams:
         'mapping Code : Name ' #  self.DataSet.banks['Bank Name'].loc[universe]
                 
         
-        '----- Process Data -----'        
+        '----- Process Data -----'
+        # Ensure the DataFrame index is sorted
+        self.DataSet.debt = self.DataSet.debt.sort_index()                
         Debt = self.DataSet.debt.loc[self.startDate:self.evalDate,self.universe]
         self.debtEval = self.DataSet.debt[self.universe].loc[self.evalDate].squeeze(axis=0) #.loc[self.evalDate] #.copy()
         self.debtEval['Sys'] = self.debtEval[self.universe].sum()
         self.wtsEval = self.debtEval.div(self.debtEval['Sys'])
         self.wtsEval = self.wtsEval[self.universe]
+        self.wts = Debt.div(self.debtEval['Sys'])
         
         self.dfk = self.DataSet.capitalRatio[self.universe]/100
         '0. Get CDS and RRs from the Dataset'
         if self.fixedRRs == True:
-            self.dfRR = pd.DataFrame(np.tile(.0,Debt.shape), index= Debt.index, columns = Debt.columns)
+            self.dfRR = pd.DataFrame(np.tile(RR,Debt.shape), index= Debt.index, columns = Debt.columns)
         else:         
             self.dfRR = self.DataSet.RR.loc[self.startDate:self.evalDate]
             
         self.dfCDS  = self.getCDSdf()            
         self.LGDEval = 1-self.dfRR[self.universe].loc[self.evalDate].squeeze(axis=0) 
         '1. Get PD, DD data'
-        pdd = PD(self.dfCDS,self.dfRR, self.dfk, True) # last parameter is True for calculating implied vola
-        self.dfPD = pdd.dfPD
-        
-        dfU = self.getLatentVar(pdd.dfDD)
-        self.dfSigma = pdd.dfSigma
-        self.dfSigmaEval = self.dfSigma.loc[self.evalDate].squeeze(axis=0) #another idea to take the average or ewma mean over the period 
+        pdd = PD(self.dfCDS,self.dfRR, self.dfk, False) # last parameter is True for calculating implied vola
+        self.dfPD = pdd.dfPD        
+        self.dfU = self.getLatentVar(pdd.dfDD)
+        dfCDSeval = pd.DataFrame(self.dfCDS.loc[self.evalDate]).T
+        dfRReval = pd.DataFrame(self.dfRR.loc[self.evalDate]).T
+        pdd_getSigma = PD(dfCDSeval,dfRReval, self.dfk, True) #get impliedVola for evalDate
+        self.dfSigmaEval = pdd_getSigma.dfSigma #self.dfSigma.loc[self.evalDate].squeeze(axis=0) #another idea to take the average or ewma mean over the period 
         
         ############################################
         '2. Get Factor Model'
-        fm = FactorModel(dfU, self.nF)
+        fm = FactorModel(self.dfU, self.nF)
         self.ldngs = fm.ldngs
         
 
@@ -130,78 +134,8 @@ class GetImpliedParams:
     def getLatentVar(self, dfDD):
                 
         'Get DD log changes'
-        dfU = dfDD.transform(lambda x: np.log(x.astype('float64'))).diff(-1)
+        dfU = dfDD.diff(-1)
+        #dfU = dfDD.transform(lambda x: np.log(x.astype('float64'))).diff(-1)
         dfU = dfU[:-1] # drop the first NoN obs
-        
-        if self.plotInd == True:
-            'PDs Plot'
-            ax1 = myplot_frame((10,5))
-            pdd.dfPD.median(axis=1).plot(color=self.mycolors[0], ax=ax1)
-            pd.DataFrame(np.quantile(pdd.dfPD,.25,axis=1),index=pdd.dfPD.index).plot(linestyle=':',color = self.mycolors[2],ax=ax1)
-            pd.DataFrame(np.quantile(pdd.dfPD,.75,axis=1),index=pdd.dfPD.index).plot(linestyle=':',color = self.mycolors[2],ax=ax1)
-            ax1.set_xlabel('')
-            ax1.set_ylabel(r'$PD$')
-            ax1.legend(['Median',r'$25\%-75\%$ Quantile Range'])
-            saveFig(self.path,'PDs')
-            
-            'Implied Vola Plots'
-            ax1 = myplot_frame((10,5))
-            pdd.dfSigma.median(axis=1).plot(color=self.mycolors[0], ax=ax1)
-            pd.DataFrame(np.quantile(pdd.dfSigma,.25,axis=1),index=pdd.dfSigma.index).plot(linestyle=':',color = self.mycolors[2],ax=ax1)
-            pd.DataFrame(np.quantile(pdd.dfSigma,.75,axis=1),index=pdd.dfSigma.index).plot(linestyle=':',color = self.mycolors[2],ax=ax1)
-            ax1.set_xlabel('')
-            ax1.set_ylabel(r'$\hat{\sigma}$')
-            ax1.legend(['Median',r'$25\%-75\%$ Quantile Range'])
-            saveFig(self.path,'impliedSigma')
-            
-            
-            '-- Time Plots'
-            pdd.dfPD.plot(figsize = (5,25), fontsize = 12, subplots=True)
-            
-            '-- Box plots'
-            axs = sns.boxplot(data=pdd.dfPD)
-            axs.set_xticklabels(ax.get_xticklabels(),rotation = 90)         
-            pdd.dfDD.plot(alpha=0.6, figsize=(9, 12),subplots=True, sharey=True)
-            plt.xlabel('')
-            saveFig(self.path,'DD')
-            
+                    
         return dfU
-    
-    def plotLoadings(self):
-        if plotInd == True:
-            'PDs Plot'
-            ax1 = myplot_frame((10,5))
-            pdd.dfPD.median(axis=1).plot(color=mycolors[0], ax=ax1)
-            pd.DataFrame(np.quantile(pdd.dfPD,.25,axis=1),index=pdd.dfPD.index).plot(linestyle=':',color = mycolors[2],ax=ax1)
-            pd.DataFrame(np.quantile(pdd.dfPD,.75,axis=1),index=pdd.dfPD.index).plot(linestyle=':',color = mycolors[2],ax=ax1)
-            ax1.set_xlabel('')
-            ax1.set_ylabel(r'$PD$')
-            ax1.legend(['Median',r'$25\%-75\%$ Quantile Range'])
-            saveFig(path,'PDs')
-            
-            'Implied Vola Plots'
-            ax1 = myplot_frame((10,5))
-            pdd.dfSigma.median(axis=1).plot(color=mycolors[0], ax=ax1)
-            pd.DataFrame(np.quantile(pdd.dfSigma,.25,axis=1),index=pdd.dfSigma.index).plot(linestyle=':',color = mycolors[2],ax=ax1)
-            pd.DataFrame(np.quantile(pdd.dfSigma,.75,axis=1),index=pdd.dfSigma.index).plot(linestyle=':',color = mycolors[2],ax=ax1)
-            ax1.set_xlabel('')
-            ax1.set_ylabel(r'$\hat{\sigma}$')
-            ax1.legend(['Median',r'$25\%-75\%$ Quantile Range'])
-            saveFig(path,'impliedSigma')
-            
-            '''
-            '-- Time Plots'
-            pdd.dfPD.plot(figsize = (5,25), fontsize = 12, subplots=True)
-            
-            '-- Box plots'
-            axs = sns.boxplot(data=pdd.dfPD)
-            axs.set_xticklabels(ax.get_xticklabels(),rotation = 90)
-            
-            
-            
-            pdd.dfDD.plot(alpha=0.6, figsize=(9, 12),subplots=True, sharey=True)
-            plt.xlabel('')
-            saveFig(path,'DD')
-            '''
-
-

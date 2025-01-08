@@ -15,7 +15,7 @@ from datetime import timedelta
 from scipy.stats import norm
 #from scipy.optimize import root, minimize, Bounds
 from statsmodels.stats.correlation_tools import cov_nearest
-from scipy.optimize import root_scalar, bisect, minimize
+from scipy.optimize import root_scalar, bisect, minimize, basinhopping
 
 from myplotstyle import * 
 
@@ -43,9 +43,9 @@ class PDmodel:
             self.Lbar = rho_base['Lbar']
             
             'Reference bank : '
-            self.sigma_ref = np.max(rho_base['Sigma'])
-            self.EAD_ref = 1/self.nBanks #np.min( rho_base['wts'] )
-            self.LGD_ref = 1. #np.min(rho_base['LGD']) 
+            self.sigma_ref = np.mean(rho_base['Sigma']) #why max?? maybe average?? 
+            self.EAD_ref = np.min( rho_base['wts'] ) #.01 #1/self.nBanks #
+            self.LGD_ref = np.mean(rho_base['LGD']) 
             if useP2R == True:
                 self.k_micro =  np.array([k_micro]*self.nBanks) + rho_base['k_p2r']
             else:
@@ -114,7 +114,6 @@ class PDmodel:
             
             sol = minimize(f, x0, method='nelder-mead',options={'xatol': 1e-8, 'disp': True})
             
-            #self.k_macro_str = k_macro_str
             self.sol = sol
             print('sol:', sol)
             self.dict["k_macro_str"] = sol.x
@@ -128,44 +127,20 @@ class PDmodel:
             self.EAD = rho_base['wts']
             self.Sigma_base = rho_base['Sigma']
             self.Names = rho_base['Names']
-            self.nOpt = len(rho_base['Sigma'])
+            self.nOpt = len(rho_base['Names'])
             self.sysIndex = np.ones(self.nOpt)  ==1  # index of which institutions are systemic
-            self.dict = {}
             
-            'construct a refeernce'
-            k_micro_ref = np.median(self.k_micro)
-            X_refM, self.PD_ref = self.DD(k_micro_ref, self.sigma_ref, self.r)        
-            self.SCD_ref = self.PD_ref*self.LGD_ref*self.EAD_ref        
-            
+            'Add fn that does this and call it '
+            self.dict = self.getKmacroEEI()
 
-            'construct the starting point'
-            x0 = np.zeros(self.nOpt)
-            for j in range(self.nOpt):
-                x0[j] = self.getEEIstarOneBnak(self.k_micro,self.U_base, self.EAD, j)
-            self.dict['k_macro_str_univ'] = x0
-            self.dict["IndirectCost_univ"], self.dict["DirectCost_univ"], self.dict["SCD_univ"] = self.getResidMulti(x0,True)
-            
-            #x0 = np.ones(self.nOpt)*.05 #np.zeros(self.nOpt)
-            f = lambda k_macro: np.sum(self.getResidMulti(k_macro )**2)
-            'minimize SSqErs'
-            sol = minimize(f, x0, method='nelder-mead',options={'xatol': 1e-15, 'disp': True})
-                      
-            self.sol = sol
-            print('sol:', sol)
-            self.dict["k_macro_str"] = sol.x           
-            self.dict["k_str"] = self.k_micro[self.sysIndex] + self.dict["k_macro_str"]     
-            self.dict["IndirectCost"], self.dict["DirectCost"], self.dict["SCD"] = self.getResidMulti(self.dict["k_macro_str"],True)
-            Xx, self.dict["PD"]  = self.DD( self.dict["k_str"], self.Sigma_base, self.r)
-            #print(self.SCD_ref)
-            #print(self.dict["SCD"])
         '---- Min ES -----'
         if varyParam == 'min ES':
             self.EAD = rho_base['wts']
             self.Sigma_base = rho_base['Sigma']
             self.Names = rho_base['Names']
-            self.nOpt = len(rho_base['Sigma'])
+            self.nOpt = len(rho_base['Names'])
             self.sysIndex = np.ones(self.nOpt)  ==1  # index of which institutions are systemic
-            self.current_k = rho_base['O-SII rates']
+            #self.current_k = rho_base['O-SII rates']
             self.k_bar = rho_base['k_bar']
             self.dict = {}
             
@@ -182,7 +157,9 @@ class PDmodel:
             self.dict["k_str"] = self.k_micro[self.sysIndex] + self.dict["k_macro_str"]     
             self.dict["ESopt"], self.dict['MESopt'] = self.getES(self.dict["k_macro_str"],self.U_base,True)
             self.dict["ESmicro"], self.dict['MESmicro'] = self.getES(np.zeros(self.nOpt) ,self.U_base,True)
-            self.dict["EScurr"], self.dict['MEScurr'] = self.getES(self.current_k,self.U_base,True)
+            self.dict["IndirectCost"], self.dict["DirectCost"], self.dict["SCD"] = self.getResidMulti(sol.x,True)
+            
+            #self.dict["EScurr"], self.dict['MEScurr'] = self.getES(self.current_k,self.U_base,True) #k_current here completely depends on O-SII. Need to change that to reuse
           
             'get PD sys at final solution:'
             Xx, self.dict["PD"] = self.DD(self.dict["k_str"], self.Sigma_base, self.r)
@@ -198,43 +175,70 @@ class PDmodel:
             self.EAD = rho_base['wts']
             self.Sigma_base = rho_base['Sigma']
             self.Names = rho_base['Names']
-            self.nOpt = len(rho_base['Sigma'])
+            self.nOpt = len(rho_base['Names'])
             self.sysIndex = np.ones(self.nOpt)  ==1  # index of which institutions are systemic
             self.dict = {}
             
             'construct a refeernce'
             X_refM, self.PD_ref = self.DD(self.k_micro[0], self.sigma_ref, self.r)        
-            EAD_grid = np.linspace(0.05,.35,20)     
-            
+            EAD_grid = np.linspace(0.01,.1,10)     
+            'loop over the grid of EAD '
             for jS, EADi in enumerate(EAD_grid):
-                print('EADi:', EADi)
+                'EADi is w_ref'
+                print('EAD_ref:', EADi)
                 self.dict[EADi] = {}
                 self.SCD_ref = self.PD_ref*self.LGD_ref*EADi #SCD_ref
-                'construct the starting point'
-                #if jS ==0:
-                x0 = np.zeros(self.nOpt)
-                for j in range(self.nOpt):
-                    x0[j] = self.getEEIstarOneBnak(self.k_micro,self.U_base, self.EAD, j)
-                #else:
-                #    x0 = sol.x
-                        
-                print('x0', x0)
-                self.dict[EADi]['k_macro_str_univ'] = x0
-                self.dict[EADi]["IndirectCost_univ"], self.dict[EADi]["DirectCost_univ"], self.dict[EADi]["SCD_univ"] = self.getResidMulti(x0,True)
+
+                self.dict[EADi] = self.getKmacroEEI()
+        'Socially Optimal function'
+        if varyParam == 'Social Opt':
+            'get the socially optimal '
+            self.Lambda = .18
+            self.Eta = .024
+            self.K_bar = np.linspace(0,.2,20) #  0.05,.1            
+            self.ECost, self.dfPDsys, self.dfES, self.SCB, self.k_bar_min = getECost()
+        
                 
-                #x0 = np.ones(self.nOpt)*.05 #np.zeros(self.nOpt)
-                f = lambda k_macro: np.sum(self.getResidMulti(k_macro )**2)
-                'minimize SSqErs'
-                sol = minimize(f, x0, method='nelder-mead',options={'xatol': 1e-15, 'disp': True})
-                          
-                #self.sol = sol
-                print('sol:', sol)
-                self.dict[EADi]["k_macro_str"] = sol.x           
-                self.dict[EADi]["k_str"] = self.k_micro[self.sysIndex] + self.dict[EADi]["k_macro_str"]     
-                self.dict[EADi]["IndirectCost"], self.dict[EADi]["DirectCost"], self.dict[EADi]["SCD"] = self.getResidMulti(self.dict[EADi]["k_macro_str"],True)
-                Xx, self.dict[EADi]["PD"]  = self.DD(self.dict[EADi]["k_str"], self.Sigma_base, self.r)
-                #print(self.SCD_ref)
-                #print(self.dict["SCD"])
+    def getKmacroEEI(self):
+        
+        print('EAD : ', self.EAD)
+        myDict = {}
+            
+        'construct a refeernce'
+        k_micro_ref = np.median(self.k_micro)
+        X_refM, myDict['PD_ref'] = self.DD(k_micro_ref, self.sigma_ref, self.r)        
+        myDict['SCD_ref'] = myDict['PD_ref']*self.LGD_ref*self.EAD_ref        
+
+        'construct the starting point'
+        x0 = np.zeros(self.nOpt)
+        for j in range(self.nOpt):
+            x0[j] = self.getEEIstarOneBnak(self.k_micro,self.U_base, self.EAD, j)
+        myDict['k_macro_str_univ'] = x0
+        myDict["IndirectCost_univ"], myDict["DirectCost_univ"], myDict["SCD_univ"] = self.getResidMulti(x0,True)
+        print('Starting point, k_macro_str_univ:', x0)
+        print('Starting point, SCD', myDict["SCD_univ"])   #add SCD w/o macroprud buffers              
+            
+        'run joint optimization'
+        #x0 = np.ones(self.nOpt)*.05 #np.zeros(self.nOpt)
+        f = lambda k_macro: np.sum(self.getResidMulti(k_macro )**2)
+        'minimize SSqErs'
+        sol = minimize(f, x0, method='nelder-mead',options={'xatol': 1e-15, 'disp': True})
+        #print(self.getResidMulti(sol.x,True))            
+        #minimizer_kwargs = {"method": "BFGS"}
+        #ret = basinhopping(f, x0, minimizer_kwargs=minimizer_kwargs,niter=200)
+        #print("global minimum: x = %.4f, f(x) = %.4f" % (ret.x, ret.fun))
+        #self.sol = sol
+        print('sol:', sol)
+        myDict["k_macro_str"] = sol.x           
+        myDict["k_str"] = self.k_micro[self.sysIndex] + myDict["k_macro_str"]     
+        myDict["IndirectCost"], myDict["DirectCost"], myDict["SCD"] = self.getResidMulti(myDict["k_macro_str"],True)
+        Xx, myDict["PD"]  = self.DD( myDict["k_str"], self.Sigma_base, self.r)
+        
+        print('SCD at optimum :', myDict["SCD"])
+        print('k_macro at optimum :', myDict["k_macro_str"], '\n')
+        
+        
+        return myDict
                 
     def getVaryRho(self,rho_grid):
         PDdict = {}
@@ -417,7 +421,9 @@ class PDmodel:
             resid[i] = SCDi[i] - self.SCD_ref
         if getSCDs == True:
             return IndirectCost, DirectCost, SCDi
+        #print('SCD :', SCDi)
         sumSqrtResid = np.sum(resid**2)
+        #print('residual :', resid)
         '''
         print('PD',PD)
         print('resid', resid,'sumSqResid', sumSqrtResid)
@@ -431,7 +437,7 @@ class PDmodel:
         
         'Set k_i_macro for one bank to minimize the diff btw SCD_i and SCD_ref'
         f = lambda k_i_macro: self.Resid(k_i_macro, k_micro, U, EAD, i)
-        k_i_macro = bisect(f,-.025,.5) #root_scalar(self.Resid, bracket=[0.01, 1], method='bisect') #k_micro[0]
+        k_i_macro = bisect(f,-.05,.5) #root_scalar(self.Resid, bracket=[0.01, 1], method='bisect') #k_micro[0]
         return k_i_macro              
         
     def Resid(self,k_i_macro, k_micro, U, EAD, i=0):
@@ -578,4 +584,39 @@ class PDmodel:
         Lsys = np.sum(L*self.EAD.T,axis=1)
         MES = np.average(L[Lsys>self.Lbar],axis=0)
         
-        return MES    
+        return MES
+
+
+
+    def getECost(self):
+        'I need to finish this later. I need it to reference itself'
+        
+        dfES = pd.DataFrame(index = K_bar, columns = ['ES'])
+        dfMES = pd.DataFrame(index = K_bar, columns = paramsDict['Names'])
+        dfKimacro = pd.DataFrame(index = K_bar, columns = paramsDict['Names'])
+        dfPD = pd.DataFrame(index = K_bar, columns = paramsDict['Names'])
+        ECost = pd.DataFrame(index = K_bar, columns = ['Sys'])
+        dfPDsys = pd.DataFrame(index = K_bar, columns = ['Sys'])
+        
+        
+        for jK, k_bar in enumerate(self.K_bar):
+            paramsDict['k_bar'] = k_bar
+            myPD = PDmodel('min ES', paramsDict, True, True)
+            dfES.loc[k_bar] = myPD.dict['ESopt']
+            #dfMES.loc[k_bar] = myPD.dict['MESopt']
+            dfKimacro.loc[k_bar] = myPD.dict['k_macro_str']
+            #dfPD.loc[k_bar] = myPD.dict['PD']
+            dfPDsys.loc[k_bar] = myPD.dict['PDsys']
+            
+                
+        'Expected Cost Function'
+            
+        dfFirstTerm = dfPDsys*self.Lambda*dfES.values
+        SCB = self.Eta*(pd.DataFrame(index = K_bar, data = K_bar, columns= ['Sys']).values - 0.)#.07
+        dfSecond = (1-dfPDsys)*SCB
+        
+        ECost = dfFirstTerm  + dfSecond
+        
+        nMin = np.where(ECost ==  ECost.min())[0]
+        k_bar_min = ECost.iloc[nMin]
+        return ECost, dfPDsys, dfES, SCB, k_bar_min
