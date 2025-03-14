@@ -15,20 +15,14 @@ from optimalSystemicCapital import PDmodel
 from myplotstyle import * 
 from GetImpliedParams import *
 
-
 from datetime import timedelta
-
 from scipy.stats import norm
 import pickle
 
-
-''' 
-'''
-
-
-'0. ---------------------- Import data ---------------------- '
+#%%'0. ---------------------- Import data ---------------------- '
 mySRparams = GetImpliedParams(dutchSubsample = True, fixedRRs = True)
 
+#%%
 '1. ---------------------- Run Expected Equal Impact Model ----------------------'
 
 paramsDict = {}
