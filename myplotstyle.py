@@ -7,6 +7,7 @@ from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
 import numpy as np
 import pandas as pd
+import os
 
 def myplot_frame(figSize=(4, 3),fntsize=30):
     'plot function parameters'
@@ -288,9 +289,11 @@ def lollipopChart2(df):
 
 
 def saveFig(path,fileName, fileType = '.pdf'):
-    plt.savefig(path+fileName+'.png',bbox_inches = 'tight')
-    plt.savefig(path+fileName+fileType,bbox_inches = 'tight')
-
+    if not os.path.exists(path):
+        os.makedirs(path)  # Create directory if it doesn't exist
+    plt.savefig(os.path.join(path, fileName + '.png'), bbox_inches='tight')
+    plt.savefig(os.path.join(path, fileName + fileType), bbox_inches='tight')
+    
 def mySpiderCharts(): 
     'fix later'
     labels=universeFull

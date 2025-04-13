@@ -129,6 +129,9 @@ class DataTransform(DataLoad):
         'Load : 3/ Debt, Recovery Rate, Deposits to Liabs Ratio'        
         debt = DataLoad().getDebt()
         self.debt = self.getToWeekly(debt)
+        'Load RWA intensity'
+        rwa_intensity = pd.read_csv(r'data\\other\\rwa_intensity.csv', header=0, parse_dates=["Date"], index_col="Date")
+        self.rwa_intensity = self.getToWeekly(rwa_intensity)
         'Load Capital 1 Ratios'
         capitalRatio = DataLoad().getTier1Ratio()
         self.capitalRatio = self.getToWeekly(capitalRatio)

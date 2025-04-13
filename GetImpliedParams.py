@@ -75,6 +75,7 @@ class GetImpliedParams:
         self.wtsEval = self.debtEval.div(self.debtEval['Sys'])
         self.wtsEval = self.wtsEval[self.universe]
         self.wts = Debt.div(self.debtEval['Sys'])
+        self.rwa_intensityEval = self.DataSet.rwa_intensity[self.universe].loc[self.evalDate]
         
         self.dfk = self.DataSet.capitalRatio[self.universe]/100
         '0. Get CDS and RRs from the Dataset'
@@ -86,12 +87,12 @@ class GetImpliedParams:
         self.dfCDS  = self.getCDSdf()            
         self.LGDEval = 1-self.dfRR[self.universe].loc[self.evalDate].squeeze(axis=0) 
         '1. Get PD, DD data'
-        pdd = PD(self.dfCDS,self.dfRR, self.dfk, False) # last parameter is True for calculating implied vola
+        pdd = PD(self.DataSet.rwa_intensity[self.universe], self.dfCDS,self.dfRR, self.dfk, False) # last parameter is True for calculating implied vola
         self.dfPD = pdd.dfPD        
         self.dfU = self.getLatentVar(pdd.dfDD)
         dfCDSeval = pd.DataFrame(self.dfCDS.loc[self.evalDate]).T
         dfRReval = pd.DataFrame(self.dfRR.loc[self.evalDate]).T
-        pdd_getSigma = PD(dfCDSeval,dfRReval, self.dfk, True) #get impliedVola for evalDate
+        pdd_getSigma = PD(self.DataSet.rwa_intensity[self.universe], dfCDSeval,dfRReval, self.dfk, True) #get impliedVola for evalDate
         self.dfSigmaEval = pdd_getSigma.dfSigma #self.dfSigma.loc[self.evalDate].squeeze(axis=0) #another idea to take the average or ewma mean over the period 
         
         ############################################

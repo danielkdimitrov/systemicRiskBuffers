@@ -43,6 +43,8 @@ paramsDict['Sigma'] = mySRparams.dfSigmaEval.values.astype(np.float64)
 paramsDict['wts'] = mySRparams.wtsEval.values.astype(np.float64) 
 paramsDict['LGD'] = mySRparams.LGDEval.values.astype(np.float64)
 paramsDict['Rho'] = mySRparams.ldngs.astype(np.float64)
+paramsDict['rwa_intensity'] = mySRparams.rwa_intensityEval.values.astype(np.float64) 
+
 paramsDict['Names'] = mySRparams.dfSigmaEval.columns
 
 paramsDict['O-SII rates'] = mySRparams.DataSet.banks.loc[mySRparams.dfCDS.columns,['O-SII buffer']].values.T[0]
@@ -63,6 +65,7 @@ myPD = PDmodel('min ES', paramsDict, True)
 
 #%%%
 dfTable = pd.DataFrame(index =paramsDict['Names'], columns = ['Country','Names','k','k_osii','k_bar_loc','k_bar','k_macro_str_osii_eur','k_macro_str_osii_local'])
+
 dfTable['k_macro_str_osii_eur'] = myPD.dict['k_macro_str']*100 
 dfTable['k_bar'] = paramsDict['k_bar']*100 
 
@@ -72,7 +75,9 @@ dfTable['Country'] =  mySRparams.DataSet.banks.Country
 dfTable['k'] = mySRparams.DataSet.capitalRatio.iloc[0]
 dfTable['k_osii'] =  paramsDict['O-SII rates']*100
 
-#%%---------------- 2. OPTIMIZE RELATIVE TO LOCAL SCALE  ---------------------
+dfTable.sort_values(['Country','Names'],  ascending = [True, True], inplace = True)
+
+#%%---------------- 2. OPTIMIZE RELATIVE TO LOCAL SCALE PER COUNTRY  ---------------------
 #%%
 'Optimize vs. kbar = O-SII Rate, at country level'
 countries = ['Netherlands', 'Germany', 'Spain','France', 'Sweden', 'Italy']
@@ -92,6 +97,7 @@ for jc, country in enumerate(countries):
     paramsDict1['O-SII rates'] = mySRparams.DataSet.banks.loc[mySRparams.dfCDS.columns,['O-SII buffer']][mask].values.T[0]
     paramsDict1['k_bar'] = np.sum(paramsDict1['O-SII rates']*paramsDict1['wts'])
     paramsDict1['Lbar'] = .0
+    paramsDict1['rwa_intensity'] = mySRparams.rwa_intensityEval[mask].values.astype(np.float64) 
     
     'including pillar 2:'
     paramsDict1['k_p2r'] = mySRparams.DataSet.banks.loc[mySRparams.dfCDS.columns,'p2r  CET1'][mask].values.astype(np.float64)
@@ -101,118 +107,11 @@ for jc, country in enumerate(countries):
     dfTable.loc[mask,'k_macro_str_osii_local'] = myPD1.dict['k_macro_str']*100
     dfTable.loc[mask,'k_bar_loc'] = paramsDict1['k_bar']*100
     
-#%% plot k vs k_str, Figure "Optimal Macro Buffers imposing the current O-SII average"
-dfTable.sort_values(['Country','Names'],  ascending = [True, True], inplace = True)
-dfTable.to_excel(r'images\OSIIrateOpt.xlsx')
+#%% SAVE 
 
+dfTable.to_csv(r'output\OSIIrateOpt.csv')
 
-#%%---------------- PLOT O-SII CHART ---------------------
-
-'Plot Local Scale'
-dfTable_loc = dfTable.iloc[4:, [0,3,7]]
-hatch_patterns = ['', '//', '.', '-', '']
-color_patterns = ['black','white','grey']
-
-
-plot2comparison(df_plot, hatch_patterns, color_patterns)
-saveFig(path,'OsiiModelRank_loc') 
-
-
-'Plot Euro Scales'
-dfTable_loc = dfTable.iloc[:, [0,3,6]]
-
-#pd.read_csv('OsiiEeiESS.csv', index_col='Short Code')
-#dfTable.drop('EEI', axis=1, inplace = True)
-
-#dfTable = pd.read_csv('OsiiESS.csv', index_col='Short Code')
-
-
-#color_patterns = ['grey','g','tab:orange']
-
-#hatch_patterns = ['.', '//.', '', '-', '']
-#color_patterns = ['grey','white','black']
-
-
-
-#saveFig(path,'OsiiModelRank_eur') 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# %%
-df = pd.DataFrame(index =paramsDict['Names'], columns = ['O-SII Rate', 'k_macro_str'])
-#df['k_macro_str_osii'] = myPD.dict['k_macro_str']*100 
-#df['O-SII Rate'] =  paramsDict['O-SII rates']*100
-#dfTable['k_macro_str_osii'] = df['k_macro_str_osii']
-#dfTable['O-SII Rate'] = df['O-SII Rate']
-
-hatch_patterns = ['', '.', '//', '-', '']
-#color_patterns = ['grey','g','tab:orange']
-color_patterns = ['black','grey','white']
-
-'plot'
-ax = myplot_frame((16, 6))
-dfTable[['k_osii','k_macro_str_osii_local','k_macro_str_osii_eur']].plot.bar(align='center',color= color_patterns, edgecolor='black',alpha=.75, ax = ax)
-plt.ylabel(r'$k_{i,macro}(\%)$', fontsize = 18)
-
-'Apply hatch patterns based on bar color'
-for i, (col, color) in enumerate(zip(dfTable[['k_osii','k_macro_str_osii_local','k_macro_str_osii_eur']].columns[1:], color_patterns)):
-    for j, bar in enumerate(ax.patches[i * len(df):(i + 1) * len(df)]):
-        if color == color_patterns[0]:
-            bar.set_hatch(hatch_patterns[0])
-        elif color == color_patterns[1]:
-            bar.set_hatch(hatch_patterns[1])
-        elif color == color_patterns[2]:
-            bar.set_hatch(hatch_patterns[2])            
-
-plt.xticks(fontsize=18,rotation=75)  # Adjust font size here
-plt.yticks(fontsize=18)  # Adjust font size here
-plt.gca().xaxis.set_tick_params(which='minor', size=0)
-plt.gca().xaxis.set_ticks_position('none')
-plt.gca().tick_params(axis='x', which='minor', bottom='off')
-plt.legend(['O-SII Rate','Model Optimal (Local)','Model Optimal (Euro-wide)'], fontsize = 14,loc='upper center', ncol=3,bbox_to_anchor=(0.5, -0.2))
-
-# Add vertical lines between different categories
-categories = dfTable['Country'].unique()
-
-count = 0 
-country_count = 'abs'
-for idx, df1 in dfTable.iterrows():
-    if df1.Country == country_count:
-        continue
-    country_count = df1.Country
-    line_position = dfTable.index.get_loc(dfTable.index[dfTable.Country == country_count][-1]) + 0.5
-    plt.axvline(line_position, color='gray', linestyle='--')
-    # annotate
-    plt.annotate(df1.Country[:2], (line_position- .5, 2.9), textcoords="offset points", xytext=(0,2.9), ha='center', fontsize=25)    
-
-saveFig(path,'OsiiModelRank') 
-
-
+'To plot the data, use main_plotCapitalBuffers.py'
 
 #%%---------------- 3. RUN EEI DUTCH CHARTS  ---------------------
 country = 'Netherlands'

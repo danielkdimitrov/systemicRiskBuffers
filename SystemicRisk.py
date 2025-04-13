@@ -22,7 +22,7 @@ from scipy import optimize
 #from sklearn.covariance import LedoitWolf
 
 class PD:
-    def __init__(self, dfCDSp, dfRR, dfk, getVola = False):
+    def __init__(self, rwa_intensity, dfCDSp, dfRR, dfk, getVola = False):
         '''
         Get Implied Probab of Default, and Distance to Default from CDS prices
         INPUT : 
@@ -40,7 +40,7 @@ class PD:
         self.dfPD = pd.DataFrame(index=dfCDSp.index, columns = dfCDSp.columns)
         self.dfDD = pd.DataFrame(index=dfCDSp.index, columns = dfCDSp.columns)
         self.dfSigma = pd.DataFrame(index=dfCDSp.index, columns = dfCDSp.columns)
-        
+        self.upsilon = rwa_intensity
 
         for jN, Name in enumerate(dfCDSp.columns):
             for indexDate, CDS in dfCDSp[Name].items():
@@ -48,9 +48,10 @@ class PD:
                 PD, DD = self.getPD(CDS, 1 - RR)
                 self.dfPD.loc[indexDate,Name], self.dfDD.loc[indexDate,Name] = PD, DD
                 if getVola == True:
+                    upsilon_i = self.upsilon.loc[indexDate,Name]
                     k = dfk.loc[indexDate,Name]
 
-                    self.dfSigma.loc[indexDate,Name] = self.getVola(PD,k)
+                    self.dfSigma.loc[indexDate,Name] = self.getVola(upsilon_i, PD,k)
 
             
     def getPD(self, CDS, LGD):
@@ -70,23 +71,23 @@ class PD:
         return PD, DD  
 
 
-    def DD(self, k, sigma):
+    def DD(self, upsilon, k, sigma):
         'k, sigma could be arrays with elements standing for each bank'
-        DD = (-np.log(1. - k) + (self.r - (1/2) *sigma**2)) / sigma
+        DD = (-np.log(1. - upsilon* k) + (self.r - (1/2) *sigma**2)) / sigma
         PD = norm.cdf(- DD)
         return PD
     
     
-    def pd_sigma(self, pd, k, sigma):
+    def pd_sigma(self, upsilon, pd, k, sigma):
         
-        PD_merton = self.DD(k,sigma)
+        PD_merton = self.DD(upsilon,k,sigma)
         res = pd - PD_merton
         
         return res
     
-    def getVola(self, PD, k):
+    def getVola(self, upsilon, PD, k):
         'minimize the diff btw observed PD and calculated via Merton'
-        f = lambda sigma: self.pd_sigma(PD, k, sigma)
+        f = lambda sigma: self.pd_sigma(upsilon, PD, k, sigma)
         sol = optimize.root_scalar(f, bracket=[0, 3], method='brentq')
         return sol.root
 
@@ -599,181 +600,3 @@ class RollingWindowCoVaR:
             self.PCtoES99.loc[indexDate] = self.MES99.loc[indexDate]*self.Weight.loc[indexDate]/self.ES99['Sys'].loc[indexDate]             
         
 
-class EEI:
-    def __init__(self, ldngs, wts, ERR, k, distrib = 'Normal',printt = False):
-        '''
-        Parameters
-        ----------
-        ldngs : TYPE
-            DESCRIPTION.
-        wts : TYPE
-            DESCRIPTION.
-        dfERR : TYPE
-            DESCRIPTION.
-        k : np array
-            capital ratio.
-        distrib : TYPE, optional
-            DESCRIPTION. The default is 'Normal'.
-        printt : TYPE, optional
-            DESCRIPTION. The default is False.
-
-        Returns
-        -------
-        None.
-
-        '''
-        self.sigma_ref = .1
-        self.r = 0
-        self.k_micro = .07
-        
-        'Get BM Impact'
-        EAD_ref= .1 #benchmark relative weight
-        LGD_ref = 1.
-        X_refM, self.PD_ref = DD(self.k_micro, self.sigma_bm, self.r)
-        
-        self.SCD_ref = PD_ref*LGD_ref*EAD_ref
-        
-        'Set k_i_macro to minimize the diff btw SCD_i and SCD_ref'
-        
-        f_resid = lambda k_i_macro: self.GetSCD(self.k_micro+k_i_macro) - self.SCD_ref
-        
-
-
-        def GetSCDs(k):
-            'Get SCDs at bottom'
-            DDs = DD(k, sigma, r)
-            IndctrD = self.GetDftSims(ldngs,DDs)
-            
-            'calculate PDs calling DefaultP'
-            pds = DefaultP(IndctrD)
-            CPD = pds.cpd
-            PDs = pd.DataFrame(data =np.diag(pds.jpd.loc[universe,universe]), index = CPD.columns, columns = ['PD'])
-            LGD = 1-ERR
-            #pd.DataFrame(data =np.ones_like(PDs), index = CPD.columns, columns = ['LGD']) 
-
-            scd = SocialCost(CPD, PDs, wts, LGD)
-
-        
-        def GetDftSims(self,ldngs):
-            np.random.seed(1)
-        
-            dWsim = pd.DataFrame(columns = dfDD.index) 
-            IndctrD = pd.DataFrame(0, index=np.arange(SetParams().nSims), columns = dfDD.index) 
-        
-            'Get Factor Simulations'
-            nSims = SetParams().nSims
-            if distrib == 'Normal':
-                M = np.random.normal(loc=0.0, scale=1.0, size=(nF, nSims))  #Factor
-                dZ = np.random.normal(loc=0.0, scale=1.0, size=(nA, nSims))  # Idiosynch 
-                dZc = np.random.normal(loc=0.0, scale=1.0, size=(nA, nSims))
-            else:
-                M = np.random.standard_t(SetParams().df, size = (nF, nSims))
-                dZ = np.random.standard_t(SetParams().df, size=(nA, nSims))
-                dZc = np.random.standard_t(SetParams().df, size=(nA, nSims))
-            
-            for jN, Name in enumerate(dfERR.index):
-                'Simulate Factor Loadings'                        
-                A = ldngs[jN,:] # factor loadings for firm jN
-                
-                dW = M.T@A + np.sqrt(1- A.T@A)*dZ[jN,:]
-                #RR = dfERR[Name]
-    
-                if printt == True : print('Simulating:', Name)
-                IndctrD[Name][dW <= - dfDD.loc[Name]] = 1
-                
-            return IndctrD
-                    
-        
-        
-        def DD(self, k, sigma, r):
-            'k, sigma could be arrays with elements standing for each bank'
-            DD = -(-np.log(1.+ k) + (r + 1/2 *sigma**2)) / sigma
-            X = - DD
-            PD = norm.cdf(X)
-            return X, PD
-
-
-            
-'''
-###################################
-
-dWi = lsim.dWsim['ABN']
-DDi = DDEval['ABN']
-RR = lsim.RRsim['ABN']
-
-TC = lsim.TC
-
-plt.figure(3)
-plt.scatter(dWi,RR)      
-plt.xlabel('dW')
-plt.ylabel('RR')
-plt.title('ABN')
-
-
-plt.figure(4)
-plt.scatter(dWi.where(dWi< -DDi),RR.where(dWi < -DDi), label='No TCs')
-plt.scatter(dWi.where(dWi< -DDi),RR.where(dWi < -DDi)*(1-TC), label='With TCs')      
-plt.xlabel('dW')
-plt.ylabel('RR')
-plt.legend()
-
-
-print(1- np.mean(RR.where(dWi< -DDi)))
-'''
-
-'''
-'Scatterplot'
-name = 'NIBC'
-plt.figure()
-plt.scatter(lsim.dWsim[name],lsim.RRsim[name])
-plt.xlabel(r'$dW_i$')
-plt.ylabel(r'$RR_i$')
-
-scatter_matrix(lsim.dWsim, alpha=0.2, figsize=(6, 6), diagonal="kde");
-scatter_matrix(lsim.RRsim, alpha=0.2, figsize=(6, 6), diagonal="kde");
-'''
-
-#plt.hist(lsim.Lsim['ABN'][lsim.Lsim['ABN']>0])
-#lsim.Lsim['ABN'][lsim.Lsim['ABN']>0].count()
-
-
-
-'''
-'Do Simulation'
-#LL = LossesSim(DataSet)
-#plt.scatter(LL.LscDbt['ING Bank'],LL.LscDbt['Sys'])
-#sample Calculate CoVaRs 
-q = .99 
-Covarr = CoVaR(LL.L, LL.Debt, 'Loss')
-
-Covarr.CoVaR.T
-Covarr.VaR.T
-Covarr.DeltaCoVaR.T
-'''
-
-'''
-'verify that squared sum of the loadings for each variable sums up to less than one'
-for j in range(len(FM.ldngs)):
-    print(np.matmul(FM.ldngs[j],FM.ldngs[j].T))
-    
-FM.fctrs.plot(subplots=True)
-'''
- 
-'''
-# try parametryzing the beta distribution 
-
-def betaParams(a, b, muRR, sigmaRR):
-    res = np.zeros(2)
-    res[0] = a - muRR*(a+b)
-    res[1] = (a*b) - sigmaRR*((a+b)**2*(a+b + 1.)) 
-    return res[0]**2 + res[1]**2
-
-muRR, sigmaRR = .8, .2
-
-f_betaParams = lambda x: betaParams(x[0], x[1], muRR, sigmaRR)
-
-bbounds = Bounds([0, np.inf], [0., np.inf])
-
-minimize(f_betaParams,[1,1], method='SLSQP', bounds=bbounds)
-
-'''
