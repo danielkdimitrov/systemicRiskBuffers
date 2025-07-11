@@ -96,11 +96,13 @@ class PDmodel:
             objective,
             bounds=bounds,
             strategy='best1bin',
-            maxiter=1000,
-            popsize=6,
+            maxiter=500,
+            popsize=10,
             tol=1e-6,
             polish=True,
-            disp=False
+            #workers=-1,         # use all CPU cores
+            updating='deferred'  # async update improves performance
+            #disp=False
         )
     
         # Store results
@@ -229,7 +231,7 @@ class PDmodel:
 
         dfFirstTerm = dfPDsys * self.Lambda * dfES.values
         SCB = self.Eta * (self.K_bar.reshape(-1, 1) - 0.0)
-        dfSecond = (1 - dfPDsys) * SCB
+        dfSecond = (1 - dfPDsys) * SCBs
         ECost = dfFirstTerm + dfSecond
         min_idx = np.argmin(ECost.values)
         k_bar_min = self.K_bar[min_idx]
@@ -259,7 +261,7 @@ def getRandomSigmaParams(n):
     """
     np.random.seed(42)  # Optional: for reproducibility
 
-    sigmas = np.random.uniform(0.1, .3, size=n)
+    sigmas = np.random.uniform(0.07, .11, size=n)
 
     return {
         'Names': [f'Bank {i+1}' for i in range(n)],
@@ -268,7 +270,7 @@ def getRandomSigmaParams(n):
         'LGD': np.ones(n),
         'Rho': np.array([[0.5]]),  # Diagonal=1.0, off-diagonal=0.5
         'rwa_intensity': np.full(n, 0.3),
-        'O-SII rates': np.full(n, 0.05),
+        'O-SII rates': np.full(n, 0.07),
         'k_bar': 0.6,
         'Lbar': 1/n,
         'k_p2r': np.zeros(n)

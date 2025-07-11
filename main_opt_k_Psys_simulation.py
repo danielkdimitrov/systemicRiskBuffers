@@ -68,7 +68,7 @@ for kbar in kbar_vals:
     print("Optimal k_macro:", np.round(model.dict["k_macro_str"], 4))
     print("Systemic PD:", model.dict["PDsys"])
     print("Systemic PD (micro-only):", model.dict["PDsysMicro"])
-    print('Optimal K_bar:',np.average(model.dict["k_macro_str"]), ' vs. budgeted:',  model.k_bar)
+    print('Optimal K_bar:',np.average(model_opt.dict["k_macro_str"]), ' vs. budgeted:',  model_opt.k_bar)
 
 # --- Convert lists to arrays ---
 k_macro_arr = np.array(k_macro_list)       # shape (len(kbar_vals), n_banks)
