@@ -47,6 +47,8 @@ def getBaseParams():
 
 #%% run point in time
 
+paramsDict = getBaseParams()
+
 myPD = PDmodel('min ES', paramsDict, True)
 'macropru buffers'
 k_i_marcro = myPD.dict['k_macro_str']*100

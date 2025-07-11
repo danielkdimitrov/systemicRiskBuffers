@@ -58,10 +58,10 @@ paramsDict['k_p2r'] = mySRparams.DataSet.banks['p2r  CET1'][mySRparams.universe]
 
 #%% --------------- K-BAR RRELATIVE TO O-SI AVERAGE ---------------------
 #%%---------------- OPTIMIZE RELATIVE TO EURO SCALE  ---------------------
-#%%% Minimize ES at current  
+#%%% Minimize PDsys at current levels 
 'Optimize vs. kbar = O-SII Rate, EURO-wide'
 
-myPD = PDmodel('min ES', paramsDict, True)
+myPD = PDmodel('min PDsys', paramsDict, True)
 
 #%%%
 dfTable = pd.DataFrame(index =paramsDict['Names'], columns = ['Country','Names','k','k_osii','k_bar_loc','k_bar','k_macro_str_osii_eur','k_macro_str_osii_local'])
