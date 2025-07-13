@@ -39,6 +39,10 @@ class PDmodel:
         self.nF = paramsDict['Rho'].shape[1]
         self.Lbar = paramsDict['Lbar']
         self.U_base = self.factorSim(paramsDict['Rho'])
+        # simulate independent losses
+        np.random.seed(42) 
+        self.LGD_sim = np.random.triangular(left=0.3, mode=0.65, right=1.0, size=(self.nSims, self.nBanks))
+        
         X_opt, self.dict["PD_init"] = self.DD(self.rwa_intensity, self.k_micro, self.Sigma_base, self.r)
 
 
@@ -56,9 +60,66 @@ class PDmodel:
             self.ECost, self.dfPDsys, self.dfES, self.SCB, self.k_bar_min = self.getECost()
         
         elif varyParam == 'min PDsys':
-            self.optimize_PDsys()
-
+            self.optimize_PDsys_diffEv()
+            
     def optimize_PDsys(self):
+        """
+        Optimize macroprudential capital allocation to minimize systemic PD (PDsys),
+        using 'trust-constr' method with LinearConstraint for total capital budget.
+        """
+    
+        n = len(self.EAD)
+    
+        def objective(k_macro):
+            Xx, _ = self.DD(self.rwa_intensity, self.k_micro + k_macro, self.Sigma_base, self.r)
+            IndD, _ = self.defaultSims(self.U_base, Xx)
+            L = IndD.T * self.LGD_sim
+            Lsys = np.sum(L * self.EAD, axis=1)
+            return self.getPDsys(Lsys)
+    
+        # Constraint: total macro capital used ≤ k_bar
+        A = self.EAD.reshape(1, -1)  # shape (1, n)
+        capital_constraint = LinearConstraint(A, lb=-np.inf, ub=self.k_bar)
+    
+        # Bounds: each k_i ≥ 0
+        bounds = Bounds(lb=np.zeros(n), ub=np.full(n, 0.5))  # max 20% buffer per bank (adjust if needed)
+    
+        # Better initial guess: distribute k_bar uniformly (normalized by EAD)
+        x0 = np.full(n, self.k_bar / np.sum(self.EAD))
+    
+        # Baseline micro-only PDsys
+        X_micro, _ = self.DD(self.rwa_intensity, self.k_micro, self.Sigma_base, self.r)
+        IndD_micro, _ = self.defaultSims(self.U_base, X_micro)
+        L_micro = IndD_micro.T * self.LGD_sim
+        Lsys_micro = np.sum(L_micro * self.EAD.T, axis=1)
+        self.dict["PDsysMicro"] = self.getPDsys(Lsys_micro)
+        self.dict["ESmicro"], self.dict["MESmicro"] = self.getES(np.zeros(n), self.U_base, showMES=True)
+    
+        # Run optimizer
+        result = minimize(
+            objective,
+            x0=x0,
+            method='trust-constr',
+            bounds=bounds,
+            constraints=[capital_constraint],
+            options={'verbose': 0, 'maxiter': 500}
+        )
+    
+        # Store results
+        k_macro_opt = result.x
+        self.dict["k_macro_str"] = k_macro_opt
+        self.dict["k_str"] = self.k_micro[self.sysIndex] + k_macro_opt
+        self.dict["ESopt"], self.dict["MESopt"] = self.getES(k_macro_opt, self.U_base, showMES=True)
+    
+        X_final, self.dict["PD"] = self.DD(self.rwa_intensity, self.dict["k_str"], self.Sigma_base, self.r)
+        IndD_final, _ = self.defaultSims(self.U_base, X_final)
+        L_final = IndD_final.T * self.LGD_sim
+        Lsys_final = np.sum(L_final * self.EAD.T, axis=1)
+        self.dict["PDsys"] = self.getPDsys(Lsys_final)
+        self.Lsys = Lsys_final
+        self.dict["k_bar_str"] = np.sum(self.dict["k_macro_str"]*self.EAD)
+
+    def optimize_PDsys_diffEv(self):
         """
         Optimize macroprudential capital allocation to minimize systemic PD (PDsys),
         using differential evolution with a soft penalty for the capital constraint.
@@ -74,8 +135,11 @@ class PDmodel:
             # Simulate PDsys
             Xx, _ = self.DD(self.rwa_intensity, self.k_micro + k_macro, self.Sigma_base, self.r)
             IndD, _ = self.defaultSims(self.U_base, Xx)
-            L = IndD.T * self.LGD
-            Lsys = np.sum(L * self.EAD.T, axis=1)
+            #L = IndD.T * self.LGD
+            # get simulated losses
+            L = IndD.T * self.LGD_sim  # elementwise multiply: each default gets its own LGD
+            Lsys = np.sum(L * self.EAD, axis=1)  # EAD is shape (n_banks,)
+            #Lsys = np.sum(L * self.EAD.T, axis=1)
             pd_sys = self.getPDsys(Lsys)
     
             return pd_sys + penalty
@@ -86,8 +150,8 @@ class PDmodel:
         # Baseline (micro-only)
         X_micro, _ = self.DD(self.rwa_intensity, self.k_micro, self.Sigma_base, self.r)
         IndD_micro, _ = self.defaultSims(self.U_base, X_micro)
-        L_micro = IndD_micro.T * self.LGD
-        Lsys_micro = np.sum(L_micro * self.EAD.T, axis=1)
+        L_micro = IndD_micro.T * self.LGD_sim
+        Lsys_micro = np.sum(L_micro * self.EAD, axis=1)
         self.dict["PDsysMicro"] = self.getPDsys(Lsys_micro)
         self.dict["ESmicro"], self.dict["MESmicro"] = self.getES(np.zeros(n), self.U_base, showMES=True)
     
@@ -113,10 +177,11 @@ class PDmodel:
     
         X_final, self.dict["PD"] = self.DD(self.rwa_intensity, self.dict["k_str"], self.Sigma_base, self.r)
         IndD_final, _ = self.defaultSims(self.U_base, X_final)
-        L_final = IndD_final.T * self.LGD
-        Lsys_final = np.sum(L_final * self.EAD.T, axis=1)
+        L_final = IndD_final.T * self.LGD_sim
+        Lsys_final = np.sum(L_final * self.EAD, axis=1)
         self.dict["PDsys"] = self.getPDsys(Lsys_final)
         self.Lsys = Lsys_final
+        self.dict["k_bar_str"] = np.sum(self.dict["k_macro_str"]*self.EAD)
 
     def optimize_ES(self):
         """
